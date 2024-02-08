@@ -36,12 +36,6 @@ struct Size {
     height: u16
 }
 
-impl Size {
-    fn center(&self) -> Position {
-        (self.width / 2, self.height / 2).into()
-    }
-}
-
 impl From<(u16, u16)> for Size {
     fn from(value: (u16, u16)) -> Self {
         Self { width: value.0, height: value.1 }
@@ -57,8 +51,9 @@ impl Dialog {
         Ok(())
     }
     
-    fn draw_border(&self, size: &Size, pos: &Position) -> Result<()> {
+    fn draw_border(&self) -> Result<()> {
 
+        if let (Some(size), Some(pos)) = (&self.size, &self.position) {
         // region:    -- Top Row
             
         stdout()
@@ -102,19 +97,35 @@ impl Dialog {
             .queue(Print(self.border_chars.br))?;
 
         // endregion: -- Bottom Row
-        
-        stdout().flush()?;
+        }
 
         Ok(())
     }
 
-    pub fn draw(&self) -> Result<()> {
+    fn draw_split(&self) -> Result<()> {
         if let (Some(size), Some(pos)) = (&self.size, &self.position) {
-            self.draw_border(size, pos)?;
-        
+            let y = pos.y + size.height - 3;
             
+            stdout()
+                .queue(MoveTo(pos.x, y))?
+                .queue(Print(self.border_chars.left_intersect))?;
 
+            for _ in pos.x+1..pos.x+size.width-1 {
+                stdout()
+                    .queue(Print(self.border_chars.split))?;
+            }
+
+            stdout()
+                .queue(Print(self.border_chars.right_intersect))?;
         }
+        Ok(())
+    }
+
+    pub fn draw(&self) -> Result<()> {
+        self.draw_border()?;
+        self.draw_split()?;
+    
+        stdout().flush()?;
         // calculate dialog position
         Ok(())
     }
@@ -217,7 +228,8 @@ pub struct Borders {
     top: BorderStyle,
     left: BorderStyle,
     right: BorderStyle,
-    bottom: BorderStyle
+    bottom: BorderStyle,
+    split: BorderStyle
 }
 
 #[derive(Debug, Default)]
@@ -267,7 +279,11 @@ struct BorderChars {
     top: char,
     left: char,
     right: char,
-    bottom: char
+    bottom: char,
+
+    left_intersect: char,
+    right_intersect: char,
+    split: char
 }
 
 impl Default for BorderChars {
@@ -286,6 +302,21 @@ impl BorderChars {
             D	╨	╤	╥	╙	╘	╒	╓	╫	╪	┘	┌	█	▄	▌	▐	▀
         
          */
+
+        let left_intersect = match (&borders.left, &borders.split) {
+            (BorderStyle::Single, BorderStyle::Single) => '├',
+            (BorderStyle::Single, BorderStyle::Double) => '╞',
+            (BorderStyle::Double, BorderStyle::Single) => '╟',
+            (BorderStyle::Double, BorderStyle::Double) => '╠',
+        };
+
+        let right_intersect = match (&borders.right, &borders.split) {
+            (BorderStyle::Single, BorderStyle::Single) => '┤',
+            (BorderStyle::Single, BorderStyle::Double) => '╡',
+            (BorderStyle::Double, BorderStyle::Single) => '╢',
+            (BorderStyle::Double, BorderStyle::Double) => '╣',
+        };
+
         let tl = match (&borders.top, &borders.left) {
             (BorderStyle::Single, BorderStyle::Single) => '┌',
             (BorderStyle::Single, BorderStyle::Double) => '╓',
@@ -334,7 +365,12 @@ impl BorderChars {
             BorderStyle::Double => '═',
         };
 
-        Self { tl, tr, bl, br, top, left, right, bottom }
+        let split = match &borders.split {
+            BorderStyle::Single => '─',
+            BorderStyle::Double => '═',
+        };
+
+        Self { tl, tr, bl, br, top, left, right, bottom, left_intersect, right_intersect, split }
 
     }
 }

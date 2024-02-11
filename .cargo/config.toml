@@ -1,0 +1,4 @@
+[env]
+
+# Scope down tracing, to filter out external lib tracing.
+RUST_LOG="dialog_test=debug,dialog=debug"

@@ -1,86 +1,53 @@
-// region:    -- Buttons
+use std::io::stdout;
 
-use std::ops::Index;
+use crossterm::cursor::MoveTo;
+use crossterm::event::{KeyCode, KeyModifiers};
+use crossterm::style::Print;
+use crossterm::QueueableCommand;
+use tracing::info;
 
-use crate::DialogResult;
+use crate::utils::Position;
+use crate::{ButtonCount, DialogResult};
+use crate::error::Result;
 
 #[derive(Debug, Default, Clone)]
 pub struct Button {
     pub name: String,
-    pub tab_index: Option<u8>,
+    pub tab_index: Option<usize>,
     pub result: DialogResult,
+    pub index: ButtonCount,
+    pub position: Position
 }
 
 impl Button {
-    pub fn new(name: impl Into<String>, tab_index: Option<u8>, result: DialogResult) -> Self {
+    pub fn new(name: impl Into<String>, tab_index: Option<usize>, result: DialogResult, index: ButtonCount) -> Self {
         Self {
             name: name.into(),
             tab_index,
-            result
+            result,
+            index,
+            position: Position::default()
          }
     }
-}
 
-#[derive(Debug)]
-pub struct Buttons {
-    pub buttons: Vec<Button>
-}
-
-impl Buttons {
-    pub fn get_min_width(&self) -> u16 {
-        self.buttons.iter().map(|b| b.name.len() as u16+6).sum()
+    pub fn set_position(&mut self, position: Position) {
+        self.position = position;
     }
 
-    pub fn new(buttons: Vec<Button>) -> Self {
-        Self {
-            buttons
+    pub fn draw(&self) -> Result<()> {
+        stdout()
+            .queue(MoveTo(self.position.x as u16, self.position.y as u16))?
+            .queue(Print(&self.name))?;
+
+        Ok(())
+    }
+
+    pub fn handle_input(&self, code: KeyCode, _modifiers: KeyModifiers) -> Result<()> {
+        if let KeyCode::Char(' ') = code {
+            info!("Button clicked");
         }
-    }
 
-    pub fn iter(&self) -> std::slice::Iter<'_, Button> {
-        self.buttons.iter()
+        Ok(())
     }
-
-    pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, Button> {
-        self.buttons.iter_mut()
-    }
-
-    pub fn len(&self) -> usize {
-        self.buttons.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.buttons.is_empty()
-    }
+    
 }
-
-impl Index<usize> for Buttons {
-    type Output = Button;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.buttons[index]
-    }
-}
-
-// Implement IntoIterator for Buttons
-impl IntoIterator for Buttons {
-    type Item = Button;
-    type IntoIter = std::vec::IntoIter<Button>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.buttons.into_iter()
-    }
-}
-
-impl Default for Buttons {
-    fn default() -> Self {
-        let buttons = vec![
-            Button::new("OK", Some(0), DialogResult::Ok),
-            Button::new("Cancel", Some(1), DialogResult::Cancel)
-        ];
-
-        Self { buttons }
-    }
-}
-
-// endregion: -- Buttons

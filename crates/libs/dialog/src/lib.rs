@@ -1,13 +1,14 @@
 use std::collections::HashMap;
 use std::io::{stdout, Write};
 
+use controls::button::ButtonColors;
+use controls::field::FieldColors;
 use controls::Control;
 use crossterm::cursor::SetCursorStyle;
 use crossterm::event::{KeyCode, KeyModifiers};
 use crossterm::style::{Color, Colors, SetColors};
 use crossterm::terminal::{Clear, ClearType};
 use crossterm::{cursor::MoveTo, style::Print, terminal::size, QueueableCommand};
-use tracing::info;
 use crate::controls::UIElement;
 use crate::error::Result;
 
@@ -46,8 +47,7 @@ pub struct Dialog {
 
     title: String,
     controls: Vec<Control>,
-    colors: Colors,
-    overlay: Option<Color>,
+    overlay: bool,
     fill: bool,
     border_chars: BorderChars,
     margin: Position,
@@ -56,9 +56,31 @@ pub struct Dialog {
     min_height: usize,
     focused: usize,
     button_count: Option<ButtonCount>,
+    mode: TextMode,
+    colors: DialogColors,
 
     submit_result: DialogResult,
     cancel_result: DialogResult
+}
+
+#[derive(Debug)]
+pub struct DialogColors {
+    pub border: Colors,
+    pub fill: Colors,
+    pub overlay: Colors,
+    pub fields: FieldColors,
+    pub buttons: ButtonColors
+}
+
+impl Default for DialogColors {
+    fn default() -> Self {
+        Self {
+            border: Colors::new(Color::White, Color::Black),
+            fill: Colors::new(Color::White, Color::Black),
+            overlay: Colors::new(Color::White, Color::Black),
+            fields: Default::default(),
+            buttons: Default::default() }
+    }
 }
 
 impl Default for Dialog {
@@ -69,8 +91,8 @@ impl Default for Dialog {
             screen_size: None,
             title: String::default(),
             controls: Vec::new(),
-            colors: Colors::new(Color::Black, Color::White),
-            overlay: None,
+            colors: DialogColors::default(),
+            overlay: false,
             fill: true,
             border_chars: BorderChars::default(),
             margin: Position::default(),
@@ -80,6 +102,7 @@ impl Default for Dialog {
             submit_result: DialogResult::Ok,
             cancel_result: DialogResult::Cancel,
             is_visible: false,
+            mode: TextMode::default(),
             focused: 0
         }
     }
@@ -135,9 +158,9 @@ impl Dialog {
     }
     
     fn draw_overlay(&self) -> Result<()> {
-        if let Some(overlay) = &self.overlay {
+        if self.overlay {
             stdout()
-                .queue(SetColors(Colors::new(*overlay, *overlay)))?
+                .queue(SetColors(self.colors.overlay))?
                 .queue(Clear(ClearType::All))?;
         }
 
@@ -150,6 +173,7 @@ impl Dialog {
         // region:    -- Top Row
             
         stdout()
+            .queue(SetColors(self.colors.border))?
            .queue(MoveTo(pos.x as u16, pos.y as u16))?
             .queue(Print(self.border_chars.tl))?;
 
@@ -194,6 +218,7 @@ impl Dialog {
         // region:    -- Fill
         let clear = " ".repeat(size.width - 2);
         if self.fill {
+            stdout().queue(SetColors(self.colors.fill))?;
             for y in pos.y+1..pos.y+size.height-1 {
                 stdout()
                     .queue(MoveTo((pos.x+1) as u16, y as u16))?
@@ -212,6 +237,7 @@ impl Dialog {
             let y = pos.y + size.height - 3;
             
             stdout()
+                .queue(SetColors(self.colors.border))?
                 .queue(MoveTo(pos.x as u16, y as u16))?
                 .queue(Print(self.border_chars.left_intersect))?;
 
@@ -237,6 +263,13 @@ impl Dialog {
         Ok(())
     }
 
+    fn toggle_input(&mut self) {
+        self.mode = match self.mode {
+            TextMode::Overtype => TextMode::Insert,
+            TextMode::Insert => TextMode::Overtype,
+        }
+    }
+
     fn draw_title(&self) -> Result<()> {
         
         if let (Some(_size), Some(pos)) = (&self.size, &self.position) {            
@@ -257,6 +290,7 @@ impl Dialog {
     }
 
     pub fn set_focus(&mut self) -> Result<()> {
+        let mode = self.mode.clone();
         let mut control = self.get_focused_control();
         
         if control.is_none() {
@@ -265,7 +299,7 @@ impl Dialog {
         }
          
         if let Some(control) = control {
-            control.show_focus_indicator()?;
+            control.show_focus_indicator(mode)?;
             stdout().flush()?;
         }
 
@@ -273,6 +307,7 @@ impl Dialog {
     }
     
     pub fn focus_last(&mut self) -> Result<()> {        
+        let mode = self.mode.clone();
         self
             .controls
             .iter_mut()
@@ -282,7 +317,7 @@ impl Dialog {
             .max_by_key(|(_, tab_index)| *tab_index)
             .map(|(control, _)| {
                 self.focused = control.get_tab_index().unwrap_or(0);
-                control.show_focus_indicator()
+                control.show_focus_indicator(mode)
             }).transpose()?;
 
         Ok(())
@@ -298,6 +333,7 @@ impl Dialog {
     }
 
     pub fn focus_next(&mut self) -> Result<()> {
+        let mode = self.mode.clone();
         self.defocus()?;
 
         self.focused = self.focused.saturating_add(1);
@@ -309,7 +345,7 @@ impl Dialog {
         }
 
         if let Some(control) = control {
-            control.show_focus_indicator()?;
+            control.show_focus_indicator(mode)?;
             stdout().flush()?;
         }
 
@@ -317,6 +353,7 @@ impl Dialog {
     }
 
     pub fn focus_previous(&mut self) -> Result<()> {
+        let mode = self.mode.clone();
         self.defocus()?;
 
         if self.focused == 0 {
@@ -328,7 +365,7 @@ impl Dialog {
         self.focused -= 1;
 
         if let Some(control) = self.get_focused_control() {
-            control.show_focus_indicator()?;
+            control.show_focus_indicator(mode)?;
             stdout().flush()?;
         }
 
@@ -336,7 +373,16 @@ impl Dialog {
         Ok(())
     }
 
-    
+    fn redraw_focused_control(&self) -> Result<()> {
+        if let Some(control) = self
+            .controls
+            .iter()
+            .filter(|c| c.get_tab_index().is_some())
+            .find(|c| c.get_tab_index() == Some(self.focused)) {
+                control.draw()?;
+            }
+            Ok(())
+    }
 
     pub fn handle_input(&mut self, code: KeyCode, modifiers: KeyModifiers) -> Result<DialogReturnValue> {
         match (code, modifiers) {
@@ -351,25 +397,36 @@ impl Dialog {
             }
             (KeyCode::BackTab, _) => {
                 self.focus_previous()?;
+            },
+            (KeyCode::Insert, _) => {
+                self.toggle_input();
+                self.redraw_focused_control()?;
             }
             _ => {}
         }
+        let mode = self.mode.clone();
 
         if let Some(focusable) = self.get_focused_control().map(|c| c as &mut Control) { 
-            return focusable.handle_input(code, modifiers);
+            return focusable.handle_input(code, modifiers, mode);
         }
 
 
         Ok(DialogReturnValue::default())
     }
 
+    fn hide_focus(&mut self) -> Result<()> {
+        self.controls.iter_mut().try_for_each(|c| c.hide_focus_indicator())?;
+
+        Ok(())
+    }
+
     pub fn draw(&mut self) -> Result<()> {
         self.draw_overlay()?;
-        stdout().queue(SetColors(self.colors))?;
         self.draw_border()?;
         self.draw_title()?;
         self.draw_split()?;
         self.draw_controls()?;
+        self.hide_focus()?;
         // self.draw_buttons()?;
         self.set_focus()?;
         stdout().queue(SetCursorStyle::SteadyBar)?;
@@ -433,8 +490,8 @@ pub struct DialogBuilder {
     controls: Vec<Control>,
     borders: Borders,
     margin: Position,
-    colors: Colors,
-    overlay: Option<Color>,
+    colors: DialogColors,
+    overlay: bool,
     fill: bool,
     min_width: usize,
     min_height: usize,
@@ -450,8 +507,8 @@ impl Default for DialogBuilder {
             controls: Vec::new(),
             borders: Borders::default(),
             margin: Position::default(),
-            colors: Colors::new(Color::White, Color::Black),
-            overlay: None,
+            colors: DialogColors::default(),
+            overlay: false,
             fill: true,
             min_width: 2,
             min_height: 4,
@@ -511,7 +568,7 @@ impl DialogBuilder {
         self
     }
 
-    pub fn set_colors(mut self, colors: Colors) -> Self {
+    pub fn set_colors(mut self, colors: DialogColors) -> Self {
         self.colors = colors;
 
         self
@@ -523,8 +580,8 @@ impl DialogBuilder {
         self
     }
 
-    pub fn set_overlay(mut self, overlay: Color) -> Self {
-        self.overlay = Some(overlay);
+    pub fn set_overlay(mut self, overlay: bool) -> Self {
+        self.overlay = overlay;
 
         self
     }
@@ -544,6 +601,10 @@ impl DialogBuilder {
     pub fn build(self) -> Dialog {
         let mut controls = self.controls.clone();
         controls.sort_by_key(|c| c.get_tab_index());
+        controls.iter_mut().for_each(|c| match c {
+            Control::TextField(f) => f.set_colors(self.colors.fields.clone()),
+            Control::Button(b) => b.set_colors(self.colors.buttons.clone()),
+        });
         
         Dialog {
             title: self.title,
@@ -593,4 +654,12 @@ impl FormData {
             data
         }
     }
+}
+
+
+#[derive(Debug, Default, Clone)]
+pub enum TextMode {
+    Overtype,
+    #[default]
+    Insert
 }

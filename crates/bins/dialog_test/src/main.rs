@@ -6,11 +6,11 @@ use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScree
 use crossterm::QueueableCommand;
 
 use dialog::borders::{BorderStyle, Borders};
-use dialog::controls::button::Button;
-use dialog::controls::field::Field;
+use dialog::controls::button::{Button, ButtonColors};
+use dialog::controls::field::{Field, FieldColors};
 use dialog::controls::Control;
 use dialog::error::Result;
-use dialog::{DialogBuilder, DialogReturnValue};
+use dialog::{DialogBuilder, DialogColors, DialogReturnValue};
 use tracing::Level;
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
@@ -48,8 +48,21 @@ fn main() -> Result<()> {
     .set_borders(borders)
     .set_margin((4, 1).into());
 
+    let colors = DialogColors {
+        border: Colors::new(Color::DarkGrey, Color::Blue),
+        fill: Colors::new(Color::DarkGrey, Color::Blue),
+        overlay: Colors::new(Color::White, Color::DarkGrey),
+        fields: FieldColors::new(
+            Colors::new(Color::DarkGrey, Color::Blue),
+            Colors::new(Color::White, Color::Blue),
+            Colors::new(Color::White, Color::Blue)
+        ),
+        buttons: ButtonColors::new(
+            Colors::new(Color::White, Color::Blue),
+            Colors::new(Color::White, Color::Blue)
+        )
+    };
 
-    
     let builder = builder
         .add_control(Control::Button(Button::new("OK", Some(4), dialog::DialogResult::Ok, dialog::ButtonCount::One)))
         .add_control(Control::Button(Button::new("Cancel", Some(5), dialog::DialogResult::Cancel, dialog::ButtonCount::Two)));
@@ -59,9 +72,9 @@ fn main() -> Result<()> {
         .add_control(Control::TextField(Field::new("Last Name", 15, 15, Some(1), 1)))
         .add_control(Control::TextField(Field::new("Company Name", 15, 40, Some(2), 2)))
         .add_control(Control::TextField(Field::new("Phone Number", 15, 15, Some(3), 3)))
-        .set_colors(Colors::new(Color::Black, Color::White))
-        .build();
-    
+        .set_colors(colors)
+        .set_overlay(true)
+        .build();   
     dialog.resize()?;
 
     // endregion: -- Setup Dialog

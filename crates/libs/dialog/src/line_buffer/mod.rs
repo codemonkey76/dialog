@@ -1,20 +1,36 @@
 use std::io::{stdout, Write};
 
-use crossterm::cursor::{MoveTo, SetCursorStyle};
+use crossterm::cursor::MoveTo;
 use crossterm::event::{KeyCode, KeyModifiers};
-use crossterm::style::Print;
-use crossterm::terminal::{Clear, ClearType};
-use crossterm::{ExecutableCommand, QueueableCommand};
-use tracing::{info, instrument};
+use crossterm::style::{Color, Colors, Print, SetColors};
+use crossterm::QueueableCommand;
+use tracing::info;
 
 use crate::utils::Position;
 use crate::error::Result;
+use crate::TextMode;
 
-#[derive(Debug, Default, Clone)]
-pub enum TextMode {
-    Overtype,
-    #[default]
-    Insert
+#[derive(Debug, Clone)]
+pub struct LineBufferColors {
+    focus_colors: Colors,
+    input_colors: Colors
+}
+
+impl LineBufferColors {
+    pub fn new(input: Colors, indicators: Colors) -> Self {
+        Self {
+            focus_colors: indicators,
+            input_colors: input,
+        }
+    }
+}
+impl Default for LineBufferColors {
+    fn default() -> Self {
+        Self {
+            focus_colors: Colors::new(Color::White, Color::Black),
+            input_colors: Colors::new(Color::White, Color::Black)
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -24,28 +40,30 @@ pub struct LineBuffer {
     position: Position,
     pad_char: char,
     pub buffer: String,
+    colors: LineBufferColors,
     pos: usize,
-    window_start: usize,
-    mode: TextMode
+    window_start: usize
 }
 
 impl LineBuffer {
-    #[instrument]
-    pub fn new(window_size: usize, max_buffer_len: usize, position: Position, pad_char: char, mode: TextMode) -> Self {
+    pub fn new(window_size: usize, max_buffer_len: usize, position: Position, pad_char: char) -> Self {
         Self {
             window_size,
             max_buffer_len,
             position,
             pad_char,
             buffer: String::new(),
+            colors: LineBufferColors::default(),
             pos: 0,
-            window_start: 0,
-            mode
+            window_start: 0
         }
     }
 
-    #[instrument]
-    pub fn handle_input(&mut self, code: KeyCode, _modifiers: KeyModifiers) -> Result<()> {
+    pub fn set_colors(&mut self, colors: LineBufferColors) {
+        self.colors = colors;
+    }
+
+    pub fn handle_input(&mut self, code: KeyCode, _modifiers: KeyModifiers, mode: TextMode) -> Result<()> {
         match code {
             KeyCode::Left => {
                 self.move_left();
@@ -66,7 +84,7 @@ impl LineBuffer {
                 self.delete();
             }
             KeyCode::Char(char) => {
-                self.add_char(char);
+                self.add_char(char, mode);
                 
             }
             _ => {}
@@ -76,35 +94,30 @@ impl LineBuffer {
         Ok(())
     }
 
-    #[instrument]
-    pub fn toggle_insert(&mut self) -> Result<()> {
-        self.mode = match self.mode {
-            TextMode::Overtype => TextMode::Insert,
-            TextMode::Insert => TextMode::Overtype,
-        };
+    // pub fn toggle_insert(&mut self) -> Result<()> {
+    //     self.mode = match self.mode {
+    //         TextMode::Overtype => TextMode::Insert,
+    //         TextMode::Insert => TextMode::Overtype,
+    //     };
         
-        stdout().execute(self.get_cursor_style())?;
+    //     stdout().execute(self.get_cursor_style())?;
         
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
-    #[instrument]
     pub fn set_position(&mut self, position: Position) {
         self.position = position;
     }
     
-    #[instrument]
     pub fn get_position(&self) -> Position {
         self.position.clone()
     }
     
-    #[instrument]
     pub fn set_pos(&mut self, pos: usize) {
         self.pos = pos.min(self.buffer.len());
         self.adjust_visible_window();
     }
 
-    #[instrument]
     fn adjust_visible_window(&mut self) {
         let window_size = self.window_size.min(self.buffer.len());
     
@@ -117,10 +130,9 @@ impl LineBuffer {
         }
     }
 
-    #[instrument]
-    fn add_char(&mut self, c: char) -> CharAddResult {
+    fn add_char(&mut self, c: char, mode: TextMode) -> CharAddResult {
         info!("add_char: {c}");
-        match self.mode {
+        match mode {
             TextMode::Overtype => {
                 // Correct the boundary check to prevent additions beyond the buffer's maximum length
                 if self.buffer.len() >= self.max_buffer_len && self.pos >= self.max_buffer_len {
@@ -170,7 +182,6 @@ impl LineBuffer {
         CharAddResult::Accepted
     }
     
-    #[instrument]
     fn backspace(&mut self) {
         if self.pos > 0 {
             self.buffer.remove(self.pos - 1);
@@ -178,7 +189,6 @@ impl LineBuffer {
         }
     }
 
-    #[instrument]
     fn delete(&mut self) {
         if self.pos < self.buffer.len() {
             self.buffer.remove(self.pos);
@@ -186,39 +196,33 @@ impl LineBuffer {
         }
     }
     
-    #[instrument]
     fn move_left(&mut self) {
         if self.pos > 0 {
             self.set_pos(self.pos-1);
         }
     }
 
-    #[instrument]
     fn move_right(&mut self) {
         if self.pos < self.buffer.len() {
             self.set_pos(self.pos+1);
         }
     }
 
-    #[instrument]
     fn move_home(&mut self) {
         self.set_pos(0);
     }
 
-    #[instrument]
     fn move_end(&mut self) {
         self.set_pos(self.buffer.len());
     }
 
-    #[instrument]
-    fn get_cursor_style(&self) -> SetCursorStyle {
-        match self.mode {
-            TextMode::Overtype => SetCursorStyle::SteadyUnderScore,
-            TextMode::Insert => SetCursorStyle::SteadyBar,
-        }
-    }
+    // fn get_cursor_style(&self) -> SetCursorStyle {
+    //     match self.mode {
+    //         TextMode::Overtype => SetCursorStyle::SteadyUnderScore,
+    //         TextMode::Insert => SetCursorStyle::SteadyBar,
+    //     }
+    // }
 
-    #[instrument]
     pub fn draw(&self) -> Result<()> {
         let window_end = std::cmp::min(self.window_start + self.window_size, self.buffer.len());
     
@@ -231,18 +235,23 @@ impl LineBuffer {
 
         stdout().queue(MoveTo((self.position.x - 1) as u16, self.position.y as u16))?;
     
+        stdout().queue(SetColors(self.colors.focus_colors))?;
         if has_left_text { stdout().queue(Print("<"))?; } else { stdout().queue(Print(" "))?; }
         
-        stdout().queue(Print(visible_buffer))?;
+        stdout()
+            .queue(SetColors(self.colors.input_colors))?
+            .queue(Print(visible_buffer))?;
         
-        if has_right_text { stdout().queue(Print(">"))?; } else { stdout().queue(Print(" "))?; }
-    
+        
         let pad_length = self.window_size.saturating_sub(visible_buffer.chars().count());
         stdout().queue(Print(self.pad_char.to_string().repeat(pad_length)))?;
+
+        stdout().queue(SetColors(self.colors.focus_colors))?;
+        if has_right_text { stdout().queue(Print(">"))?; } else { stdout().queue(Print(" "))?; }
     
         stdout()
             .queue(MoveTo(self.position.x as u16 + cursor_pos_within_window as u16, self.position.y as u16))?
-            .queue(self.get_cursor_style())?
+            // .queue(self.get_cursor_style())?
             .flush()?;
     
         Ok(())

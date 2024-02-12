@@ -7,8 +7,10 @@ use crossterm::QueueableCommand;
 use tracing::info;
 
 use crate::utils::Position;
-use crate::{ButtonCount, DialogResult};
+use crate::{ButtonCount, DialogResult, DialogReturnValue};
 use crate::error::Result;
+
+use super::UIElement;
 
 #[derive(Debug, Default, Clone)]
 pub struct Button {
@@ -29,12 +31,10 @@ impl Button {
             position: Position::default()
          }
     }
+}
 
-    pub fn set_position(&mut self, position: Position) {
-        self.position = position;
-    }
-
-    pub fn draw(&self) -> Result<()> {
+impl UIElement for Button {
+    fn draw(&self) -> Result<()> {
         stdout()
             .queue(MoveTo(self.position.x as u16, self.position.y as u16))?
             .queue(Print(&self.name))?;
@@ -42,12 +42,51 @@ impl Button {
         Ok(())
     }
 
-    pub fn handle_input(&self, code: KeyCode, _modifiers: KeyModifiers) -> Result<()> {
+    fn handle_input(&mut self, code: KeyCode, _: KeyModifiers) -> Result<DialogReturnValue> {
         if let KeyCode::Char(' ') = code {
-            info!("Button clicked");
+            Ok(DialogReturnValue {
+                should_quit: true,
+                dialog_result: Some(self.result.clone()),
+            })
+        } else {
+            Ok(DialogReturnValue::default())
         }
+    }
+
+    fn show_focus_indicator(&self) -> Result<()> {
+        stdout()
+                .queue(MoveTo(self.position.x as u16 - 2, self.position.y as u16))?
+                .queue(Print("<"))?
+                .queue(MoveTo((self.position.x + self.name.len() + 1) as u16, self.position.y as u16))?
+                .queue(Print(">"))?;
 
         Ok(())
     }
-    
+
+    fn hide_focus_indicator(&mut self) -> Result<()> {
+        stdout()
+                .queue(MoveTo(self.position.x as u16 - 2, self.position.y as u16))?
+                .queue(Print(" "))?
+                .queue(MoveTo((self.position.x + self.name.len() + 1) as u16, self.position.y as u16))?
+                .queue(Print(" "))?;
+
+        Ok(())
+    }
+
+    fn set_position(&mut self, position: Position) {
+        self.position = position
+    }
+
+    fn get_tab_index(&self) -> Option<usize> {
+        self.tab_index
+    }
+
+    fn get_value(&self) -> Option<(String, String)> {
+        None
+    }
+
+    fn get_name(&self) -> String {
+        self.name.clone()
+    }
 }
+

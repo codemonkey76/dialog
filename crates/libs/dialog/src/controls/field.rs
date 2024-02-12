@@ -1,19 +1,21 @@
 // region:    -- Fields
-use crate::{error::Result, line_buffer::{LineBuffer, TextMode}, utils::Position};
+use crate::{error::Result, line_buffer::{LineBuffer, TextMode}, utils::Position, DialogReturnValue};
 
 use std::io::stdout;
 
-use crossterm::{cursor::MoveTo, event::{KeyCode, KeyModifiers}, style::Print, QueueableCommand};
+use crossterm::{cursor::{Hide, MoveTo, Show}, event::{KeyCode, KeyModifiers}, style::Print, QueueableCommand};
+use tracing::info;
+
+use super::UIElement;
 
 #[derive(Debug, Default, Clone)]
 pub struct Field {
-    pub name: String,
-    pub display_len: usize,
-    pub input_len: usize,
-    pub tab_index: Option<usize>,
-    pub index: usize,
-    pub value: String,
-    pub position: Position,
+    name: String,
+    display_len: usize,
+    tab_index: Option<usize>,
+    index: usize,
+    value: String,
+    position: Position,
     line_buffer: LineBuffer,
 }
 
@@ -22,7 +24,6 @@ impl Field {
         Self {
             name: name.into(),
             display_len,
-            input_len,
             tab_index,
             index,
             value: String::new(),
@@ -30,20 +31,6 @@ impl Field {
             position: (0, 0).into(),
         }
     }
-
-    pub fn handle_text_input(&mut self, code: KeyCode, modifiers: KeyModifiers) -> Result<()> {
-        self.line_buffer.handle_input(code, modifiers)?;
-        self.value = self.line_buffer.buffer.clone();
-
-        Ok(())
-    }
-
-    pub fn set_position(&mut self, position: Position) {
-        self.position = position.clone();
-        let pos = Position { x: position.x+self.name.len()+2, y: position.y };
-        self.line_buffer.set_position(pos);
-    }
-
     fn draw_label(&self) -> Result<()> {
         stdout()
             .queue(MoveTo(self.position.x as u16, self.position.y as u16))?
@@ -52,69 +39,64 @@ impl Field {
         Ok(())
     }
 
-    pub fn draw(&self) -> Result<()> {
+    pub fn get_field_index(&self) -> usize {
+        self.index
+    }
+
+    pub fn get_display_window(&self) -> usize {
+        self.display_len
+    }
+
+}
+
+impl UIElement for Field {
+    fn draw(&self) -> Result<()> {
         self.draw_label()?;
         self.line_buffer.draw()?;
 
         Ok(())
     }
 
+    fn handle_input(&mut self, code: KeyCode, modifiers: KeyModifiers) -> Result<DialogReturnValue> {
+        self.line_buffer.handle_input(code, modifiers)?;
+        self.value = self.line_buffer.buffer.clone();
 
+        Ok(DialogReturnValue::default())
+    }
+
+    fn show_focus_indicator(&self) -> Result<()> {
+        let pos = self.line_buffer.get_position();
+
+        stdout()
+            .queue(Show)?
+            .queue(MoveTo(pos.x as u16, pos.y as u16))?;
+
+        Ok(())
+    }
+
+    fn hide_focus_indicator(&mut self) -> Result<()> {
+        self.line_buffer.set_pos(0);
+        self.line_buffer.draw()?;
+        stdout().queue(Hide)?;
+
+        Ok(())
+    }
+
+    fn set_position(&mut self, position: Position) {
+        self.position = position.clone();
+        let pos = Position { x: position.x+self.name.len()+2, y: position.y };
+        self.line_buffer.set_position(pos);
+    }
+
+    fn get_tab_index(&self) -> Option<usize> {
+        self.tab_index
+    }
+
+    fn get_value(&self) -> Option<(String, String)> {
+        Some((self.name.clone(), self.value.clone()))
+    }
+
+    fn get_name(&self) -> String {
+        self.name.clone()
+    }
 }
-
-// #[derive(Debug, Default)]
-// pub struct Fields{
-//     fields: Vec<Field>,
-//     pub max_name_len: usize,
-//     pub max_display_len: usize
-// }
-
-// impl Fields {
-//     pub fn iter(&self) -> std::slice::Iter<'_, Field> {
-//         self.fields.iter()
-//     }
-//     pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, Field> {
-//         self.fields.iter_mut()
-//     }
-    
-//     pub fn new() -> Self {
-//         Default::default()
-//     }
-
-//     pub fn add_field(&mut self, mut field: Field) {
-//         field.index = self.fields.len();
-        
-//         self.max_name_len = self.max_name_len.max(field.name.len());
-//         self.max_display_len = self.max_display_len.max(field.display_len);
-        
-//         self.fields.push(field);
-//     }
-
-//     pub fn len(&self) -> usize {
-//         self.fields.len()
-//     }
-
-//     pub fn is_empty(&self) -> bool {
-//         self.fields.is_empty()
-//     }
-// }
-
-// impl Index<usize> for Fields {
-//     type Output = Field;
-
-//     fn index(&self, index: usize) -> &Self::Output {
-//         &self.fields[index]
-//     }
-// }
-
-// // Implement IntoIterator for Fields
-// impl IntoIterator for Fields {
-//     type Item = Field;
-//     type IntoIter = std::vec::IntoIter<Field>;
-
-//     fn into_iter(self) -> Self::IntoIter {
-//         self.fields.into_iter()
-//     }
-// }
-
-// // endregion: -- Fields

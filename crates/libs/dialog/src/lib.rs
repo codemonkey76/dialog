@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 use std::io::{stdout, Write};
 
-use controls::{Control, Focusable};
+use controls::Control;
 use crossterm::cursor::SetCursorStyle;
 use crossterm::event::{KeyCode, KeyModifiers};
 use crossterm::style::{Color, Colors, SetColors};
 use crossterm::terminal::{Clear, ClearType};
 use crossterm::{cursor::MoveTo, style::Print, terminal::size, QueueableCommand};
 use tracing::info;
-
+use crate::controls::UIElement;
 use crate::error::Result;
 
 use crate::{utils::{Position, Size}, borders::{BorderChars, Borders}};
@@ -90,17 +90,13 @@ impl Dialog {
 
     pub fn get_data(&self) -> FormData {
         FormData::new(self.controls.clone().into_iter().filter_map(|control| {
-            if let Control::TextField(field) = control {
-                Some((field.name, field.value))
-            } else {
-                None
-            }
+            control.get_value()
         }).collect::<HashMap<String, String>>())
     }
 
     pub fn max_name_len(&self) -> usize {
         self.controls.iter().map(|c| if let Control::TextField(field) = c {
-            field.name.len()
+            field.get_name().len()
         } else {
             0
         }).max().unwrap_or(0)
@@ -257,55 +253,110 @@ impl Dialog {
             .controls
             .iter_mut()
             .filter(|c| c.get_tab_index().is_some())
-            .find(|c| c.get_tab_index() >= Some(self.focused))
+            .find(|c| c.get_tab_index() == Some(self.focused))
     }
 
     pub fn set_focus(&mut self) -> Result<()> {
-        let specs = self.get_dialog_specs();
-
-        let mut focusable = self.get_focused_control();
+        let mut control = self.get_focused_control();
         
-        if focusable.is_none() {
-            info!("Could not get focused control, setting focus back to 0");
+        if control.is_none() {
             self.focused = 0;
-            focusable = self.get_focused_control();
+            control = self.get_focused_control();
         }
          
+        if let Some(control) = control {
+            control.show_focus_indicator()?;
+            stdout().flush()?;
+        }
 
-        if let Some(focusable) = focusable {
-            info!("Found focusable Item: {:?}", focusable);
-            focusable.focus(specs)?;
+        Ok(())
+    }
+    
+    pub fn focus_last(&mut self) -> Result<()> {        
+        self
+            .controls
+            .iter_mut()
+            .filter_map(|control| control
+                .get_tab_index()
+                .map(|tab_index| (control, tab_index)))
+            .max_by_key(|(_, tab_index)| *tab_index)
+            .map(|(control, _)| {
+                self.focused = control.get_tab_index().unwrap_or(0);
+                control.show_focus_indicator()
+            }).transpose()?;
+
+        Ok(())
+    }
+
+    fn defocus(&mut self) -> Result<()> {
+        if let Some(control) = self.get_focused_control() {
+            control.hide_focus_indicator()?;
+            stdout().flush()?;
         }
 
         Ok(())
     }
 
+    pub fn focus_next(&mut self) -> Result<()> {
+        self.defocus()?;
+
+        self.focused = self.focused.saturating_add(1);
+        let mut control = self.get_focused_control();
+
+        if control.is_none() {
+            self.focused = 0;
+            control = self.get_focused_control();            
+        }
+
+        if let Some(control) = control {
+            control.show_focus_indicator()?;
+            stdout().flush()?;
+        }
+
+        Ok(())
+    }
+
+    pub fn focus_previous(&mut self) -> Result<()> {
+        self.defocus()?;
+
+        if self.focused == 0 {
+            self.focus_last()?;
+            stdout().flush()?;
+            return Ok(())
+        }
+
+        self.focused -= 1;
+
+        if let Some(control) = self.get_focused_control() {
+            control.show_focus_indicator()?;
+            stdout().flush()?;
+        }
+
+
+        Ok(())
+    }
+
+    
+
     pub fn handle_input(&mut self, code: KeyCode, modifiers: KeyModifiers) -> Result<DialogReturnValue> {
-        info!("Dialog::handle_input");
         match (code, modifiers) {
             (KeyCode::Enter, _) => {
-                info!("Enter pressed");
-                return Ok(DialogReturnValue { should_quit: true, dialog_result: Some(self.submit_result.clone()), data: self.get_data() });
+                return Ok(DialogReturnValue { should_quit: true, dialog_result: Some(self.submit_result.clone()) });
             }
             (KeyCode::Esc, _) => {
-                info!("Esc pressed");
-                return Ok(DialogReturnValue { should_quit: true, dialog_result: Some(self.cancel_result.clone()), data: self.get_data() });
+                return Ok(DialogReturnValue { should_quit: true, dialog_result: Some(self.cancel_result.clone()) });
             }
             (KeyCode::Tab, _) => {
-                info!("Moving focus forward");
-                self.focused += 1;
-                self.set_focus()?;
+                self.focus_next()?;
             }
             (KeyCode::BackTab, _) => {
-                info!("Moving focus backward");
-                self.focused -= 1;
-                self.set_focus()?;
+                self.focus_previous()?;
             }
             _ => {}
         }
 
         if let Some(focusable) = self.get_focused_control().map(|c| c as &mut Control) { 
-            focusable.handle_input(code, modifiers)?;
+            return focusable.handle_input(code, modifiers);
         }
 
 
@@ -353,8 +404,8 @@ impl Dialog {
             self.controls.iter_mut().for_each(|c| {
                 match c {
                     Control::TextField(field) => {
-                        let x = specs.position.x + 1 + specs.margin.x + specs.max_name_len - field.name.len();
-                        let y = specs.position.y + 1 + specs.margin.y + 2*field.index;
+                        let x = specs.position.x + 1 + specs.margin.x + specs.max_name_len - field.get_name().len();
+                        let y = specs.position.y + 1 + specs.margin.y + 2*field.get_field_index();
                         field.set_position((x, y).into());
                     },
                     Control::Button(button) => {
@@ -429,14 +480,14 @@ impl DialogBuilder {
 
         let new_dimensions = match &control {
             Control::TextField(field) => {
-                (self.min_width.max(4 + field.display_len + field.name.len() + 2 * self.margin.x), self.min_height + 2)
+                (self.min_width.max(4 + field.get_display_window() + field.get_name().len() + 2 * self.margin.x), self.min_height + 2)
             },
             Control::Button(button) => {
                 self.button_count = match self.button_count {
                     None => Some(ButtonCount::One),
                     Some(ButtonCount::One) => Some(ButtonCount::Two),
                     Some(ButtonCount::Two) => Some(ButtonCount::Three),
-                    Some(ButtonCount::Three) => Some(ButtonCount::Three)
+                    Some(ButtonCount::Three) => panic!("You can only add 3 buttons.")
                 };
                 (self.min_width.max(button.name.len() + 2), self.min_height)
             },
@@ -529,7 +580,6 @@ pub enum DialogResult {
 pub struct DialogReturnValue {
     pub should_quit: bool,
     pub dialog_result: Option<DialogResult>,
-    pub data: FormData
 }
 
 #[derive(Debug, Default)]

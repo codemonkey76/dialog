@@ -16,12 +16,6 @@ use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 
-#[derive(PartialEq)]
-enum Mode {
-    Insert,
-    _Overtype
-}
-
 fn main() -> Result<()> {
 
     // region:    -- Tracing Setup
@@ -73,14 +67,15 @@ fn main() -> Result<()> {
     // endregion: -- Setup Dialog
 
     // region:    -- Setup RawMode
+
     stdout()
         .queue(EnterAlternateScreen)?
         .flush()?;
     
     enable_raw_mode()?;
-    // endregion: -- Setup RawMode
 
-    let mut _mode = Mode::Insert;
+    // endregion: -- Setup RawMode
+    
     let mut result = DialogReturnValue::default();
 
     dialog.show()?;
@@ -99,12 +94,14 @@ fn main() -> Result<()> {
         }
     }
 
+    let data = dialog.get_data();
+
     // region:    -- End RawMode
     disable_raw_mode()?;
     stdout().queue(LeaveAlternateScreen)?.flush()?;
     // endregion: -- End RawMode
     
-    println!("Exited with: {:?}", result);
+    println!("Exited with: {:?}", data);
     Ok(())
 }
 

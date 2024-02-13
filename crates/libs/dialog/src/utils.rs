@@ -1,7 +1,7 @@
 // region:    -- Position
 #[derive(Debug, Clone, Default)]
 pub struct Position {
-    pub x: usize,
+    pub(crate) x: usize,
     pub y: usize
 }
 
@@ -16,9 +16,9 @@ impl From<(usize, usize)> for Position {
 // region:    -- Size
 
 #[derive(Debug, Clone, Default)]
-pub struct Size {
-    pub width: usize,
-    pub height: usize
+pub(crate) struct Size {
+    pub(crate) width: usize,
+    pub(crate) height: usize
 }
 
 impl From<(usize, usize)> for Size {

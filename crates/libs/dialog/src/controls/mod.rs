@@ -1,6 +1,7 @@
 use crossterm::event::{KeyCode, KeyModifiers};
 
-use crate::{error::Result, utils::Position, DialogReturnValue, TextMode};
+use crate::{dialog::{DialogReturnValue, TextMode}, utils::Position};
+
 pub mod field;
 pub mod button;
 
@@ -12,7 +13,7 @@ pub enum Control {
 }
 
 impl UIElement for Control {
-    fn draw(&self) -> Result<()> {
+    fn draw(&self) -> Result<(), std::io::Error> {
         match self {
             Control::TextField(f) => f.draw()?,
             Control::Button(b) => b.draw()?
@@ -21,14 +22,14 @@ impl UIElement for Control {
         Ok(())
     }
 
-    fn handle_input(&mut self, code: KeyCode, modifiers: KeyModifiers, mode: TextMode) -> Result<DialogReturnValue> {
+    fn handle_input(&mut self, code: KeyCode, modifiers: KeyModifiers, mode: TextMode) -> Result<DialogReturnValue, std::io::Error> {
         match self {
             Control::TextField(f) => f.handle_input(code, modifiers, mode),
             Control::Button(b) => b.handle_input(code, modifiers, mode)
         }
     }
 
-    fn show_focus_indicator(&self, mode: TextMode) -> Result<()> {
+    fn show_focus_indicator(&self, mode: TextMode) -> Result<(), std::io::Error> {
         match self {
             Control::TextField(f) => f.show_focus_indicator(mode)?,
             Control::Button(b) => b.show_focus_indicator(mode)?
@@ -37,7 +38,7 @@ impl UIElement for Control {
         Ok(())
     }
 
-    fn hide_focus_indicator(&mut self) -> Result<()> {
+    fn hide_focus_indicator(&mut self) -> Result<(), std::io::Error> {
         match self {
             Control::TextField(f) => f.hide_focus_indicator()?,
             Control::Button(b) => b.hide_focus_indicator()?
@@ -75,11 +76,11 @@ impl UIElement for Control {
     }
 }
 
-pub trait UIElement {
-    fn draw(&self) -> Result<()>;
-    fn handle_input(&mut self, code: KeyCode, modifiers: KeyModifiers, text_mode: TextMode) -> Result<DialogReturnValue>;
-    fn show_focus_indicator(&self, mode: TextMode) -> Result<()>;
-    fn hide_focus_indicator(&mut self) -> Result<()>;
+pub(crate) trait UIElement {
+    fn draw(&self) -> Result<(), std::io::Error>;
+    fn handle_input(&mut self, code: KeyCode, modifiers: KeyModifiers, text_mode: TextMode) -> Result<DialogReturnValue, std::io::Error>;
+    fn show_focus_indicator(&self, mode: TextMode) -> Result<(), std::io::Error>;
+    fn hide_focus_indicator(&mut self) -> Result<(), std::io::Error>;
     fn set_position(&mut self, position: Position);
     fn get_tab_index(&self) -> Option<usize>;
     fn get_name(&self) -> String;

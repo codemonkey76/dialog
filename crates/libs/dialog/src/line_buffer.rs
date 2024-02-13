@@ -1,37 +1,8 @@
 use std::io::{stdout, Write};
 
-use crossterm::cursor::MoveTo;
-use crossterm::event::{KeyCode, KeyModifiers};
-use crossterm::style::{Color, Colors, Print, SetColors};
-use crossterm::QueueableCommand;
-use tracing::info;
+use crossterm::{cursor::MoveTo, event::{KeyCode, KeyModifiers}, style::{Print, SetColors}, QueueableCommand};
 
-use crate::utils::Position;
-use crate::error::Result;
-use crate::TextMode;
-
-#[derive(Debug, Clone)]
-pub struct LineBufferColors {
-    focus_colors: Colors,
-    input_colors: Colors
-}
-
-impl LineBufferColors {
-    pub fn new(input: Colors, indicators: Colors) -> Self {
-        Self {
-            focus_colors: indicators,
-            input_colors: input,
-        }
-    }
-}
-impl Default for LineBufferColors {
-    fn default() -> Self {
-        Self {
-            focus_colors: Colors::new(Color::White, Color::Black),
-            input_colors: Colors::new(Color::White, Color::Black)
-        }
-    }
-}
+use crate::{colors::LineBufferColors, dialog::TextMode, utils::Position};
 
 #[derive(Debug, Default, Clone)]
 pub struct LineBuffer {
@@ -63,7 +34,7 @@ impl LineBuffer {
         self.colors = colors;
     }
 
-    pub fn handle_input(&mut self, code: KeyCode, _modifiers: KeyModifiers, mode: TextMode) -> Result<()> {
+    pub fn handle_input(&mut self, code: KeyCode, _modifiers: KeyModifiers, mode: TextMode) -> Result<(), std::io::Error> {
         match code {
             KeyCode::Left => {
                 self.move_left();
@@ -94,17 +65,6 @@ impl LineBuffer {
         Ok(())
     }
 
-    // pub fn toggle_insert(&mut self) -> Result<()> {
-    //     self.mode = match self.mode {
-    //         TextMode::Overtype => TextMode::Insert,
-    //         TextMode::Insert => TextMode::Overtype,
-    //     };
-        
-    //     stdout().execute(self.get_cursor_style())?;
-        
-    //     Ok(())
-    // }
-
     pub fn set_position(&mut self, position: Position) {
         self.position = position;
     }
@@ -130,8 +90,7 @@ impl LineBuffer {
         }
     }
 
-    fn add_char(&mut self, c: char, mode: TextMode) -> CharAddResult {
-        info!("add_char: {c}");
+    fn add_char(&mut self, c: char, mode: TextMode) -> CharAddResult {    
         match mode {
             TextMode::Overtype => {
                 // Correct the boundary check to prevent additions beyond the buffer's maximum length
@@ -216,14 +175,7 @@ impl LineBuffer {
         self.set_pos(self.buffer.len());
     }
 
-    // fn get_cursor_style(&self) -> SetCursorStyle {
-    //     match self.mode {
-    //         TextMode::Overtype => SetCursorStyle::SteadyUnderScore,
-    //         TextMode::Insert => SetCursorStyle::SteadyBar,
-    //     }
-    // }
-
-    pub fn draw(&self) -> Result<()> {
+    pub fn draw(&self) -> Result<(), std::io::Error> {
         let window_end = std::cmp::min(self.window_start + self.window_size, self.buffer.len());
     
         let has_left_text = self.window_start > 0;
@@ -235,18 +187,18 @@ impl LineBuffer {
 
         stdout().queue(MoveTo((self.position.x - 1) as u16, self.position.y as u16))?;
     
-        stdout().queue(SetColors(self.colors.focus_colors))?;
+        stdout().queue(SetColors(self.colors.focus))?;
         if has_left_text { stdout().queue(Print("<"))?; } else { stdout().queue(Print(" "))?; }
         
         stdout()
-            .queue(SetColors(self.colors.input_colors))?
+            .queue(SetColors(self.colors.input))?
             .queue(Print(visible_buffer))?;
         
         
         let pad_length = self.window_size.saturating_sub(visible_buffer.chars().count());
         stdout().queue(Print(self.pad_char.to_string().repeat(pad_length)))?;
 
-        stdout().queue(SetColors(self.colors.focus_colors))?;
+        stdout().queue(SetColors(self.colors.focus))?;
         if has_right_text { stdout().queue(Print(">"))?; } else { stdout().queue(Print(" "))?; }
     
         stdout()

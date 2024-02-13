@@ -5,36 +5,23 @@ use crossterm::event::{KeyCode, KeyModifiers};
 use crossterm::style::{Color, Colors, Print, SetColors};
 use crossterm::QueueableCommand;
 
+use crate::colors::ButtonColors;
+use crate::dialog::{ButtonCount, DialogResult, DialogReturnValue, TextMode};
 use crate::utils::Position;
-use crate::{ButtonCount, DialogResult, DialogReturnValue, TextMode};
-use crate::error::Result;
 
 use super::UIElement;
 
 
-#[derive(Debug, Clone)]
-pub struct ButtonColors {
-    button: Colors,
-    focus: Colors,
-}
-
-impl ButtonColors {
-    pub fn new(button: Colors, focus: Colors) -> Self {
-        Self {
-            button, focus 
-        }
-    }
-}
 
 
 #[derive(Debug, Clone)]
 pub struct Button {
-    pub name: String,
-    pub tab_index: Option<usize>,
-    pub result: DialogResult,
-    pub index: ButtonCount,
-    pub position: Position,
-    pub colors: ButtonColors
+    pub(crate) name: String,
+    tab_index: Option<usize>,
+    result: DialogResult,
+    pub(crate) index: ButtonCount,
+    position: Position,
+    colors: ButtonColors
 }
 
 impl Default for ButtonColors {
@@ -58,13 +45,13 @@ impl Button {
          }
     }
 
-    pub fn set_colors(&mut self, colors: ButtonColors) {
+    pub(crate) fn set_colors(&mut self, colors: ButtonColors) {
         self.colors = colors;
     }
 }
 
 impl UIElement for Button {
-    fn draw(&self) -> Result<()> {
+    fn draw(&self) -> Result<(), std::io::Error> {
         stdout()
             .queue(SetColors(self.colors.button))?
             .queue(MoveTo(self.position.x as u16, self.position.y as u16))?
@@ -73,7 +60,7 @@ impl UIElement for Button {
         Ok(())
     }
 
-    fn handle_input(&mut self, code: KeyCode, _: KeyModifiers, _: TextMode) -> Result<DialogReturnValue> {
+    fn handle_input(&mut self, code: KeyCode, _: KeyModifiers, _: TextMode) -> Result<DialogReturnValue, std::io::Error> {
         if let KeyCode::Char(' ') = code {
             Ok(DialogReturnValue {
                 should_quit: true,
@@ -84,7 +71,7 @@ impl UIElement for Button {
         }
     }
 
-    fn show_focus_indicator(&self, _: TextMode) -> Result<()> {
+    fn show_focus_indicator(&self, _: TextMode) -> Result<(), std::io::Error> {
         stdout()
                 .queue(SetColors(self.colors.focus))?
                 .queue(MoveTo(self.position.x as u16 - 2, self.position.y as u16))?
@@ -95,7 +82,7 @@ impl UIElement for Button {
         Ok(())
     }
 
-    fn hide_focus_indicator(&mut self) -> Result<()> {
+    fn hide_focus_indicator(&mut self) -> Result<(), std::io::Error> {
         stdout()
             .queue(SetColors(self.colors.focus))?
             .queue(MoveTo(self.position.x as u16 - 2, self.position.y as u16))?

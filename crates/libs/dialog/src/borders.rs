@@ -1,10 +1,22 @@
 #[derive(Debug, Default)]
 pub struct Borders {
-    pub top: BorderStyle,
-    pub left: BorderStyle,
-    pub right: BorderStyle,
-    pub bottom: BorderStyle,
-    pub split: BorderStyle
+    top: BorderStyle,
+    left: BorderStyle,
+    right: BorderStyle,
+    bottom: BorderStyle,
+    split: BorderStyle
+}
+
+impl Borders {
+    pub fn new(top: BorderStyle, left: BorderStyle, right: BorderStyle, bottom: BorderStyle, split: BorderStyle) -> Self {
+        Self {
+            top,
+            left,
+            right,
+            bottom,
+            split,
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -15,20 +27,20 @@ pub enum BorderStyle {
 }
 
 #[derive(Debug)]
-pub struct BorderChars {
-    pub tl: char,
-    pub tr: char,
-    pub bl: char,
-    pub br: char,
+pub(crate) struct BorderChars {
+    pub(crate) tl: char,
+    pub(crate) tr: char,
+    pub(crate) bl: char,
+    pub(crate) br: char,
 
-    pub top: char,
-    pub left: char,
-    pub right: char,
-    pub bottom: char,
+    pub(crate) top: char,
+    pub(crate) left: char,
+    pub(crate) right: char,
+    pub(crate) bottom: char,
 
-    pub left_intersect: char,
-    pub right_intersect: char,
-    pub split: char
+    pub(crate) left_intersect: char,
+    pub(crate) right_intersect: char,
+    pub(crate) split: char
 }
 
 impl Default for BorderChars {
@@ -38,7 +50,7 @@ impl Default for BorderChars {
 }
 
 impl BorderChars {
-    pub fn new(borders: Borders) -> Self {
+    pub(crate) fn new(borders: Borders) -> Self {
         /*
         
                 0	1	2	3	4	5	6	7	8	9	A	B	C	D	E	F
